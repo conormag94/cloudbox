@@ -11,10 +11,11 @@ from Crypto.PublicKey import RSA
 from Crypto import Random
 
 dbx = dropbox.Dropbox(config.access_token)
+
+# 'Secret' key used to encrypt all uploaded files
 key = b'Sixteen byte key'
 
-# TODO: Encrypt the actual key^^^ rather than just storing the generated public and private keys
-
+# Class for GUI and encryption
 class Application(tk.Frame):
     def __init__(self, master=None):
         tk.Frame.__init__(self, master)
@@ -43,6 +44,7 @@ class Application(tk.Frame):
         self.button_frame = tk.Frame(self)
         self.button_frame.pack(side="top")
 
+        # User interaction buttons
         self.GENERATE = tk.Button(self.button_frame, text="Generate keys for user", fg="blue", command=self.generate_keys)
         self.GENERATE.pack(side="left")
 
@@ -55,6 +57,7 @@ class Application(tk.Frame):
         self.QUIT = tk.Button(self.button_frame, text="Quit", fg="red", command=root.destroy)
         self.QUIT.pack(side="right")
 
+    # Dynamically creates a dropdown menu when the download button is clicked
     def add_drop(self):
         if self.current_user == "":
             print("Please select user first")
@@ -74,6 +77,7 @@ class Application(tk.Frame):
             var.set("Select file to download")
             self.drop2.pack(side="left")
 
+    # Generates RSA public and private key for particular user
     def generate_keys(self):
         if self.current_user == "":
             print("Please select user first")
@@ -82,10 +86,9 @@ class Application(tk.Frame):
             private = RSA.generate(1024)
             public = private.publickey()
 
+            # User encrypts a copy of secret key which is later decrypted
+            # using their private key
             encrypted_AES = public.encrypt(key, 32)
-
-            # print(encrypted_AES[0])
-            # print(private.decrypt(encrypted_AES))
 
             fname_public = self.current_user + '_Public.pem'
             with open(fname_public, 'wb') as f_out:
@@ -97,33 +100,19 @@ class Application(tk.Frame):
                 f_out.write(private.exportKey())
                 print("> Private key generated")
 
-            # with open(fname_public, 'rb') as f_out:
-            #     print("reading encrypted AES")
-            #     test = f_out.read()
-            #     print(test)
-            #
-            # with open(fname_private, 'rb') as f_in:
-            #     print("reading private key for decryption")
-            #     p_test = f_in.read()
-            #     kkey = RSA.importKey(p_test)
-            #     print("RESULT")
-            #     print(kkey.decrypt(test))
-
-
     def user_selected(self, user):
         self.current_user = user
 
     def file_selected(self, file):
         self.current_file = file
 
+    # Encrypts a file and uploads it to dropbox
     def upload_file(self):
         if self.current_user == "":
             print("No user selected")
         elif not os.path.isfile(self.current_user + '_Public.pem'):
             print("Create public key first!")
         else:
-            #TODO: change (see top todo)
-
             with open(self.current_user + '_Private.pem', mode='rb') as f:
                 private_data = f.read()
                 private_key = RSA.importKey(private_data)
@@ -151,6 +140,7 @@ class Application(tk.Frame):
                 except:
                     print("Failed to read file\n'%s'" % fname)
 
+    # Downloads encrypted file from dropbox and decrypts it
     def download_file(self):
         if self.current_file == "":
             print("No file selected")
@@ -179,30 +169,26 @@ class Application(tk.Frame):
             print('> DONE')
             os.remove(self.current_file)
 
-            # fname = filedialog.askopenfilename()
-            # if fname:
-            #     try:
-            #         print("> Decrypting file...")
-            #         decrypt_file(fname, decrypted_AES)
-            #         print('> Decryption Complete!')
-            #     except:                     # <- naked except is a bad idea
-            #         print("Failed to read file\n'%s'" % fname)
-
+# Helper functions to encrypt and decrypt files using the secret key_size
+# Pads data with zeros until it is aligned with the block size
 def pad(s):
     return s + b"\0" * (AES.block_size - len(s) % AES.block_size)
 
+# Encrypts file using secret key
 def encrypt(message, key, key_size=256):
     message = pad(message)
     iv = Random.new().read(AES.block_size)
     cipher = AES.new(key, AES.MODE_CBC, iv)
     return iv + cipher.encrypt(message)
 
+# Decrypts file using secret key
 def decrypt(ciphertext, key):
     iv = ciphertext[:AES.block_size]
     cipher = AES.new(key, AES.MODE_CBC, iv)
     plaintext = cipher.decrypt(ciphertext[AES.block_size:])
     return plaintext.rstrip(b"\0")
 
+# Takes an unencrypted file and returns an encrypted version
 def encrypt_file(file_name, key):
     with open(file_name, 'rb') as fo:
         plaintext = fo.read()
@@ -210,6 +196,7 @@ def encrypt_file(file_name, key):
     with open(file_name + ".enc", 'wb') as fo:
         fo.write(enc)
 
+# Takes an encrypted file and returns an unencrypted version
 def decrypt_file(file_name, key):
     with open(file_name, 'rb') as fo:
         ciphertext = fo.read()
