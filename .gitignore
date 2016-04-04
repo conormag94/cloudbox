@@ -1,1 +1,4 @@
 cloud/*
+*.pyc
+*.txt.enc
+config.py
