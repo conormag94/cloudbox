@@ -1,4 +1,4 @@
 cloud/*
 *.pyc
-*.txt.enc
+*.pem
 config.py

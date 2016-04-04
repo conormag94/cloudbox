@@ -1,4 +1,5 @@
-import os
+import os.path
+from sys import getsizeof
 import config
 import dropbox
 import tkinter as tk
@@ -6,9 +7,13 @@ from tkinter import filedialog
 
 from Crypto import Random
 from Crypto.Cipher import AES
+from Crypto.PublicKey import RSA
+from Crypto import Random
 
 dbx = dropbox.Dropbox(config.access_token)
-key = b'\xbf\xc0\x85)\x10nc\x94\x02)j\xdf\xcb\xc4\x94\x9d(\x9e[EX\xc8\xd5\xbfI{\xa2$\x05(\xd5\x18'
+key = b'Sixteen byte key'
+
+# TODO: Encrypt the actual key^^^ rather than just storing the generated public and private keys
 
 class Application(tk.Frame):
     def __init__(self, master=None):
@@ -18,43 +23,170 @@ class Application(tk.Frame):
         self.createWidgets()
 
     def createWidgets(self):
-        self.hi_there = tk.Button(self)
-        self.hi_there["text"] = "Print files"
-        self.hi_there["command"] = self.say_hi
-        self.hi_there.pack(side="top")
 
-        self.txt_box = tk.Label(self, text="This is going to be a rather large label.\nHopefully it takes up\nmore than one line")
+        # Dropdown menu
+        self.current_file = ""
+        self.current_user = ""
+        self.options = ["Alice", "Bob", "Conor"]
+        self.files = []
+        var = tk.StringVar()
+        self.drop = tk.OptionMenu(self, var, *self.options, command=self.user_selected)
+        self.drop.config(width=10)
+        var.set("Select User")
+        self.drop.pack(side="top")
+
+        # Text box
+        self.txt_box = tk.Label(self, text="- Generate: generate RSA keys for a user (essentially add them to group)\n- Upload: encrypt file and upload to Dropbox\n- Download: download file from dropbox and decrypt\n- Quit: close program")
         self.txt_box.pack(side="top")
 
+        # Frame to hold buttons
         self.button_frame = tk.Frame(self)
-        self.button_frame.pack(side="bottom")
+        self.button_frame.pack(side="top")
 
-        self.UPLOAD = tk.Button(self.button_frame, text="Upload", fg="blue", command=self.load_file)
+        self.GENERATE = tk.Button(self.button_frame, text="Generate keys for user", fg="blue", command=self.generate_keys)
+        self.GENERATE.pack(side="left")
+
+        self.UPLOAD = tk.Button(self.button_frame, text="Upload", fg="blue", command=self.upload_file)
         self.UPLOAD.pack(side="left")
 
-        self.DOWNLOAD = tk.Button(self.button_frame, text="Download", fg="blue", command=self.say_hi)
+        self.DOWNLOAD = tk.Button(self.button_frame, text="Download from DB", fg="blue", command=self.add_drop)
         self.DOWNLOAD.pack(side="left")
 
         self.QUIT = tk.Button(self.button_frame, text="Quit", fg="red", command=root.destroy)
         self.QUIT.pack(side="right")
 
-    def say_hi(self):
-        for entry in dbx.files_list_folder('').entries:
-            print(entry.name)
+    def add_drop(self):
+        if self.current_user == "":
+            print("Please select user first")
+        elif not os.path.isfile(self.current_user + '_Public.pem'):
+            print("Create public key first!")
+        else:
+            for entry in dbx.files_list_folder('/Cloudbox').entries:
+                print(entry.name)
+                self.files.append(entry.name)
+            self.DL_FILE = tk.Button(self, text="Download selected file", fg="red", command=self.download_file)
+            self.DL_FILE.pack(expand=1, side="right", fill=tk.X)
 
-    def load_file(self):
-        fname = filedialog.askopenfilename(filetypes=(("Template files", "*.tplate"),
-                                           ("HTML files", "*.html;*.htm"),
-                                           ("Text files", "*.txt"),
-                                           ("All files", "*.*") ))
-        if fname:
-            # try:
-            print(fname)
-            #dbx.files_upload('This is a test upload', '/Cloudbox/upload.txt')
-            encrypt_file(fname, key)
-            print('Done')
-            # except:                     # <- naked except is a bad idea
-            #     print("Open Source File", "Failed to read file\n'%s'" % fname)
+
+            var = tk.StringVar()
+            self.drop2 = tk.OptionMenu(self, var, *self.files, command=self.file_selected)
+            self.drop2.config(width=30)
+            var.set("Select file to download")
+            self.drop2.pack(side="left")
+
+    def generate_keys(self):
+        if self.current_user == "":
+            print("Please select user first")
+        else:
+            print("Generating keys for {}...".format(self.current_user))
+            private = RSA.generate(1024)
+            public = private.publickey()
+
+            encrypted_AES = public.encrypt(key, 32)
+
+            # print(encrypted_AES[0])
+            # print(private.decrypt(encrypted_AES))
+
+            fname_public = self.current_user + '_Public.pem'
+            with open(fname_public, 'wb') as f_out:
+                f_out.write(encrypted_AES[0])
+                print("> Public key generated")
+
+            fname_private = self.current_user + '_Private.pem'
+            with open(fname_private, 'wb') as f_out:
+                f_out.write(private.exportKey())
+                print("> Private key generated")
+
+            # with open(fname_public, 'rb') as f_out:
+            #     print("reading encrypted AES")
+            #     test = f_out.read()
+            #     print(test)
+            #
+            # with open(fname_private, 'rb') as f_in:
+            #     print("reading private key for decryption")
+            #     p_test = f_in.read()
+            #     kkey = RSA.importKey(p_test)
+            #     print("RESULT")
+            #     print(kkey.decrypt(test))
+
+
+    def user_selected(self, user):
+        self.current_user = user
+
+    def file_selected(self, file):
+        self.current_file = file
+
+    def upload_file(self):
+        if self.current_user == "":
+            print("No user selected")
+        elif not os.path.isfile(self.current_user + '_Public.pem'):
+            print("Create public key first!")
+        else:
+            #TODO: change (see top todo)
+
+            with open(self.current_user + '_Private.pem', mode='rb') as f:
+                private_data = f.read()
+                private_key = RSA.importKey(private_data)
+
+            with open(self.current_user + '_Public.pem', mode='rb') as f:
+                public_data = f.read()
+                decrypted_AES = private_key.decrypt(public_data)
+
+            fname = filedialog.askopenfilename()
+            if fname:
+                try:
+                    print("> Encrypting file...")
+                    encrypt_file(fname, decrypted_AES)
+                    # encrypt_file(fname, key)
+
+                    enc_fname = fname + '.enc'
+                    with open(enc_fname, mode='rb') as f:
+                        f_data = f.read()
+                    base_file = os.path.basename(os.path.normpath(enc_fname))
+                    print('> Encryption Complete!')
+                    print('> Uploading encrypted file...')
+                    dbx.files_upload(f_data, '/Cloudbox/' + base_file)
+                    print('> Upload complete!')
+                    os.remove(enc_fname)
+                except:
+                    print("Failed to read file\n'%s'" % fname)
+
+    def download_file(self):
+        if self.current_file == "":
+            print("No file selected")
+        elif not os.path.isfile(self.current_user + '_Public.pem'):
+            print("Create keys first!")
+        else:
+            print('> Downloading from Dropbox')
+            dl = dbx.files_download_to_file(self.current_file, '/Cloudbox/'+self.current_file)
+            print('> File downloaded')
+            print()
+
+            print('Grabbing keys')
+            fname_public = self.current_user + '_Public.pem'
+            fname_private = self.current_user + '_Private.pem'
+
+            with open(self.current_user + '_Private.pem', mode='rb') as f:
+                private_data = f.read()
+                private_key = RSA.importKey(private_data)
+
+            with open(self.current_user + '_Public.pem', mode='rb') as f:
+                public_data = f.read()
+                decrypted_AES = private_key.decrypt(public_data)
+
+            print('> DECRYPTING')
+            decrypt_file(self.current_file, decrypted_AES)
+            print('> DONE')
+            os.remove(self.current_file)
+
+            # fname = filedialog.askopenfilename()
+            # if fname:
+            #     try:
+            #         print("> Decrypting file...")
+            #         decrypt_file(fname, decrypted_AES)
+            #         print('> Decryption Complete!')
+            #     except:                     # <- naked except is a bad idea
+            #         print("Failed to read file\n'%s'" % fname)
 
 def pad(s):
     return s + b"\0" * (AES.block_size - len(s) % AES.block_size)
@@ -82,7 +214,8 @@ def decrypt_file(file_name, key):
     with open(file_name, 'rb') as fo:
         ciphertext = fo.read()
     dec = decrypt(ciphertext, key)
-    with open(file_name[:-4], 'wb') as fo:
+    new_fname = file_name[:-8] + '_decrypted' + file_name[-8:-4]
+    with open(new_fname, 'wb') as fo:
         fo.write(dec)
 
 root = tk.Tk()
