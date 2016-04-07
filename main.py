@@ -1,5 +1,5 @@
 import os.path
-from sys import getsizeof
+
 import config
 import dropbox
 import tkinter as tk
